@@ -7,9 +7,13 @@ Falls back to key-based auth if AZURE_COMPUTER_VISION_KEY is set.
 
 from __future__ import annotations
 import logging
+import re
 from typing import Optional
 
 from flask import current_app
+
+# Matches bucket IDs like "1A", "2D", "3B" — digit followed by uppercase letter
+_BUCKET_ID_RE = re.compile(r'\b([1-9][A-Z])\b')
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +75,18 @@ def analyze_image(image_data: bytes, image_name: str = "") -> dict:
         )
 
         # Extract structured results
+        img_width = result.metadata.width if result.metadata else None
+        img_height = result.metadata.height if result.metadata else None
+
         tags = []
         if result.tags:
-            tags = [{"name": t.name, "confidence": t.confidence} for t in result.tags.values]
+            tags = [{"name": t.name, "confidence": t.confidence} for t in result.tags.list]
 
         objects = []
+        primary_object = None
         if result.objects:
-            for obj in result.objects.values:
-                objects.append({
+            for obj in result.objects.list:
+                entry = {
                     "name": obj.tags[0].name if obj.tags else "unknown",
                     "confidence": obj.tags[0].confidence if obj.tags else 0,
                     "bounding_box": {
@@ -87,7 +95,13 @@ def analyze_image(image_data: bytes, image_name: str = "") -> dict:
                         "width": obj.bounding_box.width,
                         "height": obj.bounding_box.height,
                     },
-                })
+                }
+                objects.append(entry)
+            # Primary object = largest by bounding-box area (the most prominent subject)
+            primary_object = max(
+                objects,
+                key=lambda o: o["bounding_box"]["width"] * o["bounding_box"]["height"],
+            )
 
         caption = ""
         if result.caption:
@@ -97,7 +111,7 @@ def analyze_image(image_data: bytes, image_name: str = "") -> dict:
         if result.dense_captions:
             dense_captions = [
                 {"text": dc.text, "confidence": dc.confidence}
-                for dc in result.dense_captions.values
+                for dc in result.dense_captions.list
             ]
 
         read_text = []
@@ -106,14 +120,26 @@ def analyze_image(image_data: bytes, image_name: str = "") -> dict:
                 for line in block.lines:
                     read_text.append(line.text)
 
+        # Extract bucket ID (e.g. "1A", "2D") from OCR text
+        bucket_id_ocr = None
+        for line in read_text:
+            m = _BUCKET_ID_RE.search(line.upper())
+            if m:
+                bucket_id_ocr = m.group(1)
+                break
+
         return {
             "status": "success",
             "image_name": image_name,
+            "image_width": img_width,
+            "image_height": img_height,
             "tags": tags,
             "objects": objects,
+            "primary_object": primary_object,
             "caption": caption,
             "dense_captions": dense_captions,
             "read_text": read_text,
+            "bucket_id_ocr": bucket_id_ocr,
         }
 
     except Exception as e:
@@ -162,10 +188,10 @@ def analyze_image_from_url(image_url: str) -> dict:
         )
 
         tags = [{"name": t.name, "confidence": t.confidence}
-                for t in (result.tags.values if result.tags else [])]
+                for t in (result.tags.list if result.tags else [])]
         objects = []
         if result.objects:
-            for obj in result.objects.values:
+            for obj in result.objects.list:
                 objects.append({
                     "name": obj.tags[0].name if obj.tags else "unknown",
                     "confidence": obj.tags[0].confidence if obj.tags else 0,

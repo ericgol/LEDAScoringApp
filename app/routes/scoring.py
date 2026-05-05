@@ -37,7 +37,7 @@ def create_scoring_session():
         facility_location=data.get("facility_location", ""),
         proctor_name=data.get("proctor_name", ""),
         date=data.get("date", ""),
-        lane_spacing=data.get("lane_spacing", "20 FT"),
+        lane_spacing=data.get("lane_spacing", "5 FT"),
         lighting=data.get("lighting", "Daylight"),
         wind_average_mph=data.get("wind_average_mph", ""),
         wind_gusts_mph=data.get("wind_gusts_mph", ""),
@@ -108,6 +108,10 @@ def analyze_images():
                     "instruction": step.instruction,
                 })
 
+    # Track bucket IDs seen in sequence for duplicate / out-of-order detection.
+    # Each entry is the OCR-detected bucket ID string (or None if unreadable).
+    seen_bucket_ids: list[str] = []
+
     results = []
     for i, f in enumerate(files):
         if not f.filename:
@@ -134,6 +138,32 @@ def analyze_images():
 
         # Score the image
         score = scoring_service.score_image(analysis, expected["expected_bucket"])
+
+        # ------------------------------------------------------------------ #
+        # Duplicate / out-of-order detection                                  #
+        #   - Consecutive retake of the same bucket  → allowed (is_duplicate) #
+        #   - Retake of a bucket seen earlier but not just before → FAIL      #
+        # ------------------------------------------------------------------ #
+        bucket_id_ocr = analysis.get("bucket_id_ocr")
+        is_duplicate = False
+        is_out_of_order = False
+
+        if bucket_id_ocr:
+            if seen_bucket_ids and seen_bucket_ids[-1] == bucket_id_ocr:
+                # Consecutive retake of the same bucket — allowed
+                is_duplicate = True
+            elif bucket_id_ocr in seen_bucket_ids:
+                # Revisiting a bucket that appeared earlier in the sequence — not allowed
+                is_out_of_order = True
+                score["result"] = "fail"
+                score["reason"] = (
+                    f"Out-of-order retake: bucket {bucket_id_ocr} was already "
+                    f"photographed earlier in the sequence"
+                )
+            seen_bucket_ids.append(bucket_id_ocr)
+
+        score["is_duplicate"] = is_duplicate
+        score["is_out_of_order"] = is_out_of_order
 
         result = {
             "image_index": i,
