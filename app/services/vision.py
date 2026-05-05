@@ -98,10 +98,11 @@ def analyze_image(image_data: bytes, image_name: str = "") -> dict:
                 }
                 objects.append(entry)
             # Primary object = largest by bounding-box area (the most prominent subject)
-            primary_object = max(
-                objects,
-                key=lambda o: o["bounding_box"]["width"] * o["bounding_box"]["height"],
-            )
+            if objects:
+                primary_object = max(
+                    objects,
+                    key=lambda o: o["bounding_box"]["width"] * o["bounding_box"]["height"],
+                )
 
         caption = ""
         if result.caption:
