@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}LEDA Scoring Results - {{ session.pilot_last_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <section class="card">
+        <h2>Scoring Results</h2>
+
+        <!-- Session info -->
+        <div class="session-info">
+            <div class="info-grid">
+                <div><strong>Pilot:</strong> {{ session.pilot_first_name }} {{ session.pilot_last_name }}</div>
+                <div><strong>Organization:</strong> {{ session.pilot_organization }}</div>
+                <div><strong>Course:</strong> {{ course.name if course else session.course_id }}</div>
+                <div><strong>Proctor:</strong> {{ session.proctor_name }}</div>
+                <div><strong>Date:</strong> {{ session.date }}</div>
+                <div><strong>Lane Spacing:</strong> {{ session.lane_spacing }}</div>
+                <div><strong>Drone:</strong> {{ session.drone_make }} {{ session.drone_model }}</div>
+                <div><strong>Lighting:</strong> {{ session.lighting }}</div>
+                <div><strong>Pilot View:</strong> {{ session.pilot_view }}</div>
+                <div><strong>Wind:</strong> {{ session.wind_average_mph }} avg / {{ session.wind_gusts_mph }} gusts MPH</div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="results-summary-box">
+            <h3>Summary</h3>
+            <div class="summary-stats">
+                <div class="stat">
+                    <span class="stat-value">{{ summary.total_images }}</span>
+                    <span class="stat-label">Total Images</span>
+                </div>
+                <div class="stat stat-pass">
+                    <span class="stat-value">{{ summary.passed }}</span>
+                    <span class="stat-label">Passed</span>
+                </div>
+                <div class="stat stat-fail">
+                    <span class="stat-value">{{ summary.failed }}</span>
+                    <span class="stat-label">Failed</span>
+                </div>
+                <div class="stat stat-review">
+                    <span class="stat-value">{{ summary.needs_review }}</span>
+                    <span class="stat-label">Needs Review</span>
+                </div>
+            </div>
+            <div class="overall-result {{ 'result-pass' if summary.overall_result == 'pass' else 'result-incomplete' }}">
+                {{ summary.overall_result | upper }}
+            </div>
+        </div>
+
+        <!-- Per-image results -->
+        <h3>Image Details</h3>
+        <div class="image-results">
+            {% for result in session.image_results %}
+            <div class="image-result-card {{ 'result-pass' if result.score.result == 'pass' else ('result-fail' if result.score.result == 'fail' else 'result-review') }}">
+                <div class="image-result-header">
+                    <span class="image-index">#{{ result.image_index + 1 }}</span>
+                    <span class="maneuver-name">{{ result.maneuver_name }}</span>
+                    <span class="expected-bucket">Bucket: {{ result.expected_bucket }}</span>
+                    <span class="score-badge score-{{ result.score.result }}">{{ result.score.result | upper }}</span>
+                </div>
+                <div class="image-result-body">
+                    <p class="instruction">{{ result.instruction }}</p>
+                    <p><strong>File:</strong> {{ result.filename }}</p>
+                    {% if result.analysis %}
+                    <p><strong>Caption:</strong> {{ result.analysis.get('caption', 'N/A') }}</p>
+                    {% if result.analysis.get('tags') %}
+                    <p><strong>Tags:</strong>
+                        {% for tag in result.analysis.tags[:10] %}
+                        <span class="tag">{{ tag.name }} ({{ "%.0f" | format(tag.confidence * 100) }}%)</span>
+                        {% endfor %}
+                    </p>
+                    {% endif %}
+                    {% endif %}
+                    {% if result.score.get('colors_detected') %}
+                    <p><strong>Colors:</strong> {{ result.score.colors_detected | join(', ') }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="actions">
+            <a href="/" class="btn btn-primary">New Session</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

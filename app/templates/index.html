@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}LEDA Drone Scoring - New Session{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Step 1: Session Setup -->
+    <section id="session-setup" class="card">
+        <h2>New Scoring Session</h2>
+        <form id="session-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="course_id">Course Level</label>
+                    <select id="course_id" name="course_id" required>
+                        <option value="">-- Select Course --</option>
+                        {% for course in courses %}
+                        <option value="{{ course.id }}"
+                                data-total-images="{{ course.total_images }}"
+                                data-time-limit="{{ course.time_limit_minutes }}"
+                                data-maneuvers='{{ course.maneuvers | length }}'>
+                            {{ course.name }} ({{ course.total_images }} images, {{ course.maneuvers | length }} maneuvers)
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div id="course-info" class="course-info hidden"></div>
+
+            <h3>Pilot Information</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pilot_last_name">Last Name</label>
+                    <input type="text" id="pilot_last_name" name="pilot_last_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="pilot_first_name">First Name</label>
+                    <input type="text" id="pilot_first_name" name="pilot_first_name" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pilot_organization">Organization</label>
+                    <input type="text" id="pilot_organization" name="pilot_organization">
+                </div>
+                <div class="form-group">
+                    <label for="proctor_name">Proctor Name</label>
+                    <input type="text" id="proctor_name" name="proctor_name" required>
+                </div>
+            </div>
+
+            <h3>Equipment</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="drone_make">Drone Make</label>
+                    <input type="text" id="drone_make" name="drone_make">
+                </div>
+                <div class="form-group">
+                    <label for="drone_model">Drone Model</label>
+                    <input type="text" id="drone_model" name="drone_model">
+                </div>
+            </div>
+
+            <h3>Conditions</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="lane_spacing">Lane Spacing</label>
+                    <select id="lane_spacing" name="lane_spacing">
+                        <option value="10 FT">10 FT</option>
+                        <option value="20 FT" selected>20 FT</option>
+                        <option value="30 FT">30 FT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="lighting">Lighting</label>
+                    <select id="lighting" name="lighting">
+                        <option value="Daylight" selected>Daylight</option>
+                        <option value="Lighted">Lighted (300+ LUX)</option>
+                        <option value="Dark">Dark (&lt;1 LUX)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="pilot_view">Pilot View</label>
+                    <select id="pilot_view" name="pilot_view">
+                        <option value="Line of Sight" selected>Line of Sight</option>
+                        <option value="Interface Only">Interface Only</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="wind_average_mph">Wind Avg (MPH)</label>
+                    <input type="text" id="wind_average_mph" name="wind_average_mph">
+                </div>
+                <div class="form-group">
+                    <label for="wind_gusts_mph">Wind Gusts (MPH)</label>
+                    <input type="text" id="wind_gusts_mph" name="wind_gusts_mph">
+                </div>
+                <div class="form-group">
+                    <label for="facility_location">Facility Location</label>
+                    <input type="text" id="facility_location" name="facility_location">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="btn-create-session">Create Session</button>
+        </form>
+    </section>
+
+    <!-- Step 2: Image Upload (shown after session creation) -->
+    <section id="image-upload" class="card hidden">
+        <h2>Upload Flight Images</h2>
+        <p id="upload-info"></p>
+
+        <!-- Maneuver sequence reference -->
+        <div id="maneuver-sequence" class="maneuver-sequence"></div>
+
+        <!-- Upload methods -->
+        <div class="upload-methods">
+            <div class="upload-method">
+                <button type="button" class="btn btn-secondary" id="btn-folder-picker">
+                    Select SD Card Folder
+                </button>
+                <span class="upload-hint">Uses File System Access API (Chrome/Edge)</span>
+            </div>
+
+            <div class="upload-method">
+                <button type="button" class="btn btn-secondary" id="btn-folder-fallback">
+                    Select Folder (All Browsers)
+                </button>
+                <input type="file" id="folder-input" webkitdirectory multiple accept="image/*" class="hidden">
+            </div>
+
+            <div class="upload-method">
+                <button type="button" class="btn btn-secondary" id="btn-file-picker">
+                    Select Files
+                </button>
+                <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+            </div>
+        </div>
+
+        <!-- Drag and drop zone -->
+        <div id="drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+                <div class="drop-icon">&#128247;</div>
+                <p>Drag &amp; drop flight images here</p>
+                <p class="drop-hint">Images will be sorted by filename and matched to the maneuver sequence</p>
+            </div>
+        </div>
+
+        <!-- Selected files preview -->
+        <div id="file-preview" class="file-preview hidden">
+            <h3>Selected Images (<span id="file-count">0</span>)</h3>
+            <div id="file-list" class="file-list"></div>
+            <div class="upload-actions">
+                <button type="button" class="btn btn-primary" id="btn-analyze">
+                    Upload &amp; Analyze Images
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-clear-files">
+                    Clear Selection
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div id="progress-section" class="hidden">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p id="progress-text">Uploading and analyzing images...</p>
+        </div>
+    </section>
+
+    <!-- Step 3: Results summary (shown after analysis) -->
+    <section id="results-section" class="card hidden">
+        <h2>Scoring Results</h2>
+        <div id="results-summary"></div>
+        <div id="results-detail"></div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}
