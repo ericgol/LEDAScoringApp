@@ -9,15 +9,6 @@ param baseName string
 @description('Environment suffix')
 param environment string = 'dev'
 
-@description('Computer Vision endpoint URL')
-param computerVisionEndpoint string
-
-@description('Storage account name')
-param storageAccountName string
-
-@description('Storage blob endpoint')
-param storageBlobEndpoint string
-
 var appServicePlanName = 'asp-${baseName}-${environment}'
 var webAppName = 'app-${baseName}-${environment}'
 
@@ -50,32 +41,6 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appCommandLine: 'gunicorn --bind=0.0.0.0 --timeout 600 run:app'
-      appSettings: [
-        {
-          name: 'AZURE_COMPUTER_VISION_ENDPOINT'
-          value: computerVisionEndpoint
-        }
-        {
-          name: 'AZURE_STORAGE_ACCOUNT_NAME'
-          value: storageAccountName
-        }
-        {
-          name: 'AZURE_STORAGE_BLOB_ENDPOINT'
-          value: storageBlobEndpoint
-        }
-        {
-          name: 'AZURE_STORAGE_CONTAINER_NAME'
-          value: 'drone-images'
-        }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
-        }
-        {
-          name: 'FLASK_ENV'
-          value: environment == 'prod' ? 'production' : 'development'
-        }
-      ]
     }
   }
 }
