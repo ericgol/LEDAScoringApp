@@ -108,8 +108,9 @@ DroneScoring/
 - **MAN 1 (Position)**: 18 scoring images
 - **MAN 2 (Traverse)**: 18 scoring images
 
-### Level 2 — 5 Maneuvers, timed per maneuver
-- **MAN 1–2**: Same as Level 1
+### Level 2 — 5 Maneuvers, 96 total scoring images, timed per maneuver
+- **MAN 1 (Position)**: 18 scoring images
+- **MAN 2 (Traverse)**: 18 scoring images
 - **MAN 3 (Orbit)**: 20 scoring images
 - **MAN 4 (Inspect)**: 20 scoring images
 - **MAN 5 (Recon)**: 20 scoring images (5 laps)
