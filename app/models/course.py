@@ -72,13 +72,15 @@ class ScoringSession:
     facility_location: str = ""
     proctor_name: str = ""
     date: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
-    lane_spacing: str = "20 FT"
+    lane_spacing: str = "5 FT"
     lighting: str = "Daylight"
     wind_average_mph: str = ""
     wind_gusts_mph: str = ""
     pilot_view: str = "Line of Sight"
     # Image results: list of {image_index, maneuver_id, expected_bucket, filename, analysis, score}
     image_results: list[dict] = field(default_factory=list)
+    # Tracks OCR-detected bucket IDs in submission order for duplicate/out-of-order detection
+    seen_bucket_ids: list[str] = field(default_factory=list)
     elapsed_times: dict = field(default_factory=dict)  # maneuver_id -> MM:SS
     status: str = "pending"  # pending, in_progress, completed
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())

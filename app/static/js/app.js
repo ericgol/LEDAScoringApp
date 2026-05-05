@@ -254,48 +254,94 @@
     // Show progress
     progressSection.classList.remove("hidden");
     progressFill.style.width = "0%";
-    progressText.textContent = "Uploading and analyzing images...";
+    progressText.textContent = "Starting upload...";
     this.disabled = true;
 
-    const formData = new FormData();
-    formData.append("session_id", sessionId);
-    for (const file of selectedFiles) {
-      formData.append("files[]", file);
-    }
+    const total = selectedFiles.length;
+    const allResults = [];
+    let lastSummary = null;
+    let errorCount = 0;
 
-    try {
-      // Simulate progress during upload
-      const progressInterval = setInterval(() => {
-        const current = parseFloat(progressFill.style.width) || 0;
-        if (current < 90) {
-          progressFill.style.width = current + 2 + "%";
+    for (let i = 0; i < total; i++) {
+      const file = selectedFiles[i];
+      const pct = Math.round((i / total) * 100);
+      progressFill.style.width = pct + "%";
+      progressText.textContent =
+        `Analyzing image ${i + 1} of ${total}: ${file.name}`;
+
+      const fd = new FormData();
+      fd.append("session_id", sessionId);
+      fd.append("image_index", i);
+      fd.append("file", file);
+
+      try {
+        const res = await fetch("/api/analyze/image", {
+          method: "POST",
+          body: fd,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          allResults.push(data.result);
+          lastSummary = data.summary;
+        } else {
+          errorCount++;
+          // Push a placeholder so image_index alignment is preserved
+          allResults.push({
+            image_index: i,
+            filename: file.name,
+            maneuver_id: "unknown",
+            maneuver_name: "Unknown",
+            step_number: i + 1,
+            expected_bucket: "?",
+            instruction: "Error processing this image",
+            analysis: { caption: "", tags: [] },
+            score: { result: "pending", reason: "Upload or analysis error" },
+          });
         }
-      }, 500);
-
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData,
-      });
-
-      clearInterval(progressInterval);
-      progressFill.style.width = "100%";
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert("Analysis error: " + (err.error || "Unknown error"));
-        this.disabled = false;
-        return;
+      } catch (err) {
+        errorCount++;
+        allResults.push({
+          image_index: i,
+          filename: file.name,
+          maneuver_id: "unknown",
+          maneuver_name: "Unknown",
+          step_number: i + 1,
+          expected_bucket: "?",
+          instruction: "Network error",
+          analysis: { caption: "", tags: [] },
+          score: { result: "pending", reason: "Network error: " + err.message },
+        });
       }
-
-      const data = await res.json();
-      progressText.textContent = "Analysis complete!";
-
-      // Show results
-      renderResults(data);
-    } catch (err) {
-      alert("Network error: " + err.message);
-      this.disabled = false;
     }
+
+    progressFill.style.width = "100%";
+    progressText.textContent =
+      errorCount > 0
+        ? `Analysis complete with ${errorCount} error(s).`
+        : "Analysis complete!";
+
+    // Build a client-side summary if the server never returned one
+    if (!lastSummary) {
+      const scores = allResults.map((r) => r.score);
+      lastSummary = {
+        total_images: scores.length,
+        passed: scores.filter((s) => s.result === "pass").length,
+        failed: scores.filter((s) => s.result === "fail").length,
+        needs_review: scores.filter((s) => s.result === "needs_review").length,
+        pending: scores.filter((s) => s.result === "pending").length,
+        pass_rate: 0,
+        overall_result: "incomplete",
+      };
+    }
+
+    renderResults({
+      session_id: sessionId,
+      images_processed: allResults.length,
+      images_expected: sessionInfo ? sessionInfo.total_images_expected : total,
+      results: allResults,
+      summary: lastSummary,
+    });
   });
 
   // --- Render Results ---

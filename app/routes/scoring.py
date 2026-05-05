@@ -197,6 +197,121 @@ def analyze_images():
     })
 
 
+@scoring_bp.route("/analyze/image", methods=["POST"])
+def analyze_single_image():
+    """Upload and analyze a single image for a scoring session.
+
+    Called once per image by the frontend to avoid Azure App Service
+    request-body and response-timeout limits.
+
+    Accepts multipart/form-data with:
+      - session_id: scoring session ID
+      - image_index: 0-based position of this image in the submission order
+      - file: the image file
+
+    Returns JSON with the individual result and the running summary.
+    """
+    session_id = request.form.get("session_id")
+    image_index = request.form.get("image_index", type=int)
+
+    if not session_id:
+        return jsonify({"error": "session_id is required"}), 400
+    if image_index is None:
+        return jsonify({"error": "image_index is required"}), 400
+
+    session = get_session(session_id)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    course = get_course(session.course_id)
+    if not course:
+        return jsonify({"error": "Course not found"}), 404
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    image_data = f.read()
+    if len(image_data) == 0:
+        return jsonify({"error": "Empty file"}), 400
+
+    # Build flat expected sequence (image-capturing steps only)
+    expected_sequence = [
+        {
+            "maneuver_id": maneuver.id,
+            "maneuver_name": maneuver.name,
+            "step_number": step.step_number,
+            "expected_bucket": step.expected_bucket,
+            "instruction": step.instruction,
+        }
+        for maneuver in course.maneuvers
+        for step in maneuver.steps
+        if step.captures_image
+    ]
+
+    expected = expected_sequence[image_index] if image_index < len(expected_sequence) else {
+        "maneuver_id": "extra",
+        "maneuver_name": "Extra",
+        "step_number": image_index + 1,
+        "expected_bucket": "?",
+        "instruction": "Extra image beyond expected sequence",
+    }
+
+    # Store the image
+    storage_info = storage_service.upload_image(image_data, f.filename, session_id)
+
+    # Analyze with Computer Vision
+    analysis = vision_service.analyze_image(image_data, f.filename)
+
+    # Score
+    score = scoring_service.score_image(analysis, expected["expected_bucket"])
+
+    # Duplicate / out-of-order detection using session-persisted state
+    bucket_id_ocr = analysis.get("bucket_id_ocr")
+    is_duplicate = False
+    is_out_of_order = False
+    seen = list(session.seen_bucket_ids)  # copy so we can mutate safely
+
+    if bucket_id_ocr:
+        if seen and seen[-1] == bucket_id_ocr:
+            is_duplicate = True
+        elif bucket_id_ocr in seen:
+            is_out_of_order = True
+            score["result"] = "fail"
+            score["reason"] = (
+                f"Out-of-order retake: bucket {bucket_id_ocr} was already "
+                f"photographed earlier in the sequence"
+            )
+        seen.append(bucket_id_ocr)
+        session.seen_bucket_ids = seen
+
+    score["is_duplicate"] = is_duplicate
+    score["is_out_of_order"] = is_out_of_order
+
+    result = {
+        "image_index": image_index,
+        "filename": f.filename,
+        "maneuver_id": expected["maneuver_id"],
+        "maneuver_name": expected["maneuver_name"],
+        "step_number": expected["step_number"],
+        "expected_bucket": expected["expected_bucket"],
+        "instruction": expected["instruction"],
+        "storage_info": storage_info,
+        "analysis": analysis,
+        "score": score,
+    }
+
+    # Append to session and persist
+    session.image_results.append(result)
+    session.status = "in_progress"
+    update_session(session)
+
+    # Running summary over all results so far
+    summary = scoring_service.score_session([r["score"] for r in session.image_results])
+
+    return jsonify({"result": result, "summary": summary})
+
+
 @scoring_bp.route("/results/<session_id>", methods=["GET"])
 def view_results(session_id):
     """Render the scoring results page for a session."""
